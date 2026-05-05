@@ -1,0 +1,21 @@
+{
+  "name": "github-actions-forum-scraper",
+  "version": "1.0.0",
+  "description": "Forum scraper with Telegram notifications and GitHub Actions scheduling",
+  "main": "dist/scraper.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/scraper.js",
+    "dev": "tsc --watch -p tsconfig.json"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.9.0",
+    "cheerio": "^1.2.0",
+    "dotenv": "^17.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.17",
+    "typescript": "^5.8.3"
+  }
+}

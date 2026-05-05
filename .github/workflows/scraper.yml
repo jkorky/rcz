@@ -1,0 +1,70 @@
+name: Forum Scraper
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Read pause flag
+        id: pause_flag
+        run: |
+          if [ -f .scraper-paused.json ]; then
+            paused=$(node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('.scraper-paused.json','utf8'));process.stdout.write(p.paused===true?'true':'false');")
+          else
+            paused=false
+          fi
+          echo "paused=$paused" >> "$GITHUB_OUTPUT"
+
+      - name: Run scraper
+        id: run_scraper
+        continue-on-error: true
+        if: ${{ github.event_name != 'schedule' || steps.pause_flag.outputs.paused != 'true' }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          FORUM_URL: ${{ secrets.FORUM_URL }}
+        run: npm run build && node dist/scraper.js
+
+      - name: Pause on terminal failure
+        if: ${{ steps.run_scraper.outcome == 'failure' }}
+        run: |
+          node -e "const fs=require('fs');fs.writeFileSync('.scraper-paused.json', JSON.stringify({paused:true, reason:'terminal_failure', updatedAt:new Date().toISOString()}));"
+
+      - name: Unpause on successful manual run
+        if: ${{ github.event_name == 'workflow_dispatch' && steps.run_scraper.outcome == 'success' }}
+        run: |
+          node -e "const fs=require('fs');fs.writeFileSync('.scraper-paused.json', JSON.stringify({paused:false, reason:'', updatedAt:new Date().toISOString()}));"
+
+      - name: Commit and push state/pause changes if needed
+        if: ${{ always() }}
+        run: |
+          if git diff --quiet -- state.json .scraper-paused.json; then
+            echo "state/pause unchanged; skipping commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state.json .scraper-paused.json
+          git commit -m "chore: update scraper state/pause"
+          git push
+
+      - name: Fail workflow when scraper failed
+        if: ${{ steps.run_scraper.outcome == 'failure' }}
+        run: exit 1
